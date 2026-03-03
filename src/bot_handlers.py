@@ -97,22 +97,22 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
         sub = get_active_subscription(user_id)
         
         if sub:
-            bot.send_message(chat_id, "⏳ Generating your Premium VIP Pass...", disable_notification=True)
+            bot.send_message(chat_id, "⏳ Loading...", disable_notification=True)
             plan_name = sub["plan_name"]
             end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
             is_active = True
             msg = f"✅ *Active VIP Member*\n\n🛡️ *Current Plan:* {plan_name}\n⏳ *Valid Until:* `{end_date_str} UTC`"
             
-            # Generate the dynamic image
             card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
-            
             if card_io:
                 bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown")
             else:
-                # Fallback to plain text if image generation fails for some reason
                 send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown")
         else:
-            # User is NOT VIP. Do not generate a card. Instead, show a text message and pitch the plans.
+            bot.send_message(chat_id, "⏳ Loading...", disable_notification=True)
+            plan_name = "NONE"
+            end_date_str = "N/A"
+            is_active = False
             msg = f"👤 *Profile: {username}*\n\n❌ *Status:* Free User\n\nYou currently don't have access to the VIP channel.\nUnlock premium features by picking a plan below! 👇"
             
             plans = get_all_plans()
@@ -121,8 +121,12 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
                 for plan in plans:
                     btn_text = f"🔥 {plan['name']} - ₹{plan['price']} ({plan['duration_days']} Days)"
                     markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
-                
-            send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
+            
+            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
+            if card_io:
+                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown", reply_markup=markup)
+            else:
+                send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
 
     @bot.message_handler(commands=['my_subscription', 'profile'])
     def command_my_subscription(message):
@@ -454,9 +458,13 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
             except Exception as e:
                 bot.send_message(admin_id, f"❌ Error generating invite link: {e}")
                 
-                elif action == "reject":
+        elif action == "reject":
             try:
                 bot.edit_message_caption(caption=f"{call.message.caption or ''}\n\n*STATUS: ❌ REJECTED*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+            except Exception:
+                pass  # Message may not have a caption
+            reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."
+            bot.send_message(target_user_id, reject_msg, parse_mode="Markdown")
             except Exception:
                 pass  # Message may not have a caption
             reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."

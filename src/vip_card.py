@@ -132,6 +132,8 @@ def generate_vip_card(bot, user_id, username, plan_name, expiry_date_str, is_act
         # Expiry
         if is_active:
             draw.text((text_x + 230, 435), f"EXPIRES: {expiry_date_str.split()[0]}", font=font_normal, fill=(200, 200, 200))
+        else:
+            draw.text((text_x + 240, 435), f"UPGRADE NOW", font=font_normal, fill=(200, 200, 200))
 
 
         # 4. Save to buffer
