@@ -34,8 +34,11 @@ register_handlers(
     PLAN_IMAGE_URL, SUPPORT_IMAGE_URL
 )
 
-# Explicitly remove commands to clear the Telegram menu button
+# Explicitly remove commands to clear the Telegram menu button across all scopes
 bot.delete_my_commands()
+bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllPrivateChats())
+bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllGroupChats())
+bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllChatAdministrators())
 
 app = Flask(__name__)
 

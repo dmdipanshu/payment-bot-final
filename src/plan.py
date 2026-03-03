@@ -11,7 +11,7 @@ def add_dummy_plans():
     plans = [
         {
             "_id": 1,
-            "name": "1st Plan - 1 Month",
+            "name": "1 Month - ₹99",
             "price": 99,
             "currency": "INR",
             "currency_symbol": "₹",
@@ -19,7 +19,7 @@ def add_dummy_plans():
         },
         {
             "_id": 2,
-            "name": "2nd Plan - 6 Months",
+            "name": "6 Months - ₹149",
             "price": 149,
             "currency": "INR",
             "currency_symbol": "₹",
@@ -27,7 +27,7 @@ def add_dummy_plans():
         },
         {
             "_id": 3,
-            "name": "3rd Plan - 1 Year",
+            "name": "1 Year - ₹199",
             "price": 199,
             "currency": "INR",
             "currency_symbol": "₹",
@@ -35,7 +35,7 @@ def add_dummy_plans():
         },
         {
             "_id": 4,
-            "name": "4th Plan - Lifetime",
+            "name": "Lifetime - ₹299",
             "price": 299,
             "currency": "INR",
             "currency_symbol": "₹",

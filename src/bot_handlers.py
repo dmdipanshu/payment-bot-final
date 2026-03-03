@@ -96,27 +96,33 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
     def _handle_profile(chat_id, user_id, username):
         sub = get_active_subscription(user_id)
         
-        bot.send_message(chat_id, "⏳ Generating your Premium VIP Pass...")
-        
         if sub:
+            bot.send_message(chat_id, "⏳ Generating your Premium VIP Pass...", disable_notification=True)
             plan_name = sub["plan_name"]
             end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
             is_active = True
             msg = f"✅ *Active VIP Member*\n\n🛡️ *Current Plan:* {plan_name}\n⏳ *Valid Until:* `{end_date_str} UTC`"
-        else:
-            plan_name = "NONE"
-            end_date_str = "N/A"
-            is_active = False
-            msg = "❌ *No Active Subscription*\n\nYou currently don't have access to the VIP channel.\nTap '💎 Get Premium' below to view our plans."
             
-        # Generate the dynamic image
-        card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
-        
-        if card_io:
-            bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown")
+            # Generate the dynamic image
+            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
+            
+            if card_io:
+                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown")
+            else:
+                # Fallback to plain text if image generation fails for some reason
+                send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown")
         else:
-            # Fallback to plain text if image generation fails for some reason
-            send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown")
+            # User is NOT VIP. Do not generate a card. Instead, show a text message and pitch the plans.
+            msg = f"👤 *Profile: {username}*\n\n❌ *Status:* Free User\n\nYou currently don't have access to the VIP channel.\nUnlock premium features by picking a plan below! 👇"
+            
+            plans = get_all_plans()
+            markup = InlineKeyboardMarkup(row_width=1)
+            if plans:
+                for plan in plans:
+                    btn_text = f"🔥 {plan['name']} - ₹{plan['price']} ({plan['duration_days']} Days)"
+                    markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
+                
+            send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
 
     @bot.message_handler(commands=['my_subscription', 'profile'])
     def command_my_subscription(message):
@@ -355,6 +361,7 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('supreply_'))
     def admin_support_reply_init(call):
+        bot.answer_callback_query(call.id)
         if str(call.from_user.id) != str(admin_id): return
         target_user_id = call.data.split('_')[1]
         original_msg = "\n".join(call.message.text.split('\n')[3:]) 
@@ -372,6 +379,7 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
     # ---------------- PAYMENTS & ADMIN VERIFICATION ---------------- #
     @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
     def process_plan_selection(call):
+        bot.answer_callback_query(call.id)
         plan_id = int(call.data.split('_')[1])
         plan = get_plan_by_id(plan_id)
         if not plan: return
@@ -382,10 +390,10 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("📸 Send Screenshot", callback_data=f"ss_{plan_id}_{tx_ref}"))
         bot.send_photo(call.message.chat.id, photo=qr_image, caption=caption, reply_markup=markup, parse_mode="Markdown")
-        bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('ss_'))
     def ask_for_screenshot(call):
+        bot.answer_callback_query(call.id)
         data = call.data.split('_')
         msg = bot.send_message(call.message.chat.id, "📸 Please *upload a screenshot* of your successful payment.\n\nMake sure the transaction ID is clearly visible.", parse_mode="Markdown")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
@@ -411,6 +419,7 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
     def admin_verification_decision(call):
+        bot.answer_callback_query(call.id)
         if str(call.from_user.id) != str(admin_id): return
         data = call.data.split('_')
         action = data[0]
@@ -431,7 +440,6 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
                     bot.edit_message_caption(caption=f"{call.message.caption or ''}\n\n*STATUS: ✅ APPROVED*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
                 except Exception:
                     pass  # Message may not have a caption
-                bot.answer_callback_query(call.id, "Payment Approved.")
                 
                 # Check for referral reward
                 if new_sub.get("referrer_id"):
@@ -446,11 +454,10 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
             except Exception as e:
                 bot.send_message(admin_id, f"❌ Error generating invite link: {e}")
                 
-        elif action == "reject":
+                elif action == "reject":
             try:
                 bot.edit_message_caption(caption=f"{call.message.caption or ''}\n\n*STATUS: ❌ REJECTED*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
             except Exception:
                 pass  # Message may not have a caption
             reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."
             bot.send_message(target_user_id, reject_msg, parse_mode="Markdown")
-            bot.answer_callback_query(call.id, "Payment Rejected.")
