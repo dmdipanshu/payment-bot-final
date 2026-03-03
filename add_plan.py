@@ -5,13 +5,42 @@ def add_dummy_plans():
     plans_col.delete_many({})
     
     plans = [
-        {"_id": 1, "name": "Basic Profile VIP", "price": 10.0, "duration_days": 30},
-        {"_id": 2, "name": "Premium Signals Gold", "price": 49.0, "duration_days": 90},
-        {"_id": 3, "name": "Lifetime Whale Access", "price": 199.0, "duration_days": 3650},
+        {
+            "_id": 1,
+            "name": "1st Plan - 1 Month",
+            "price": 99,
+            "currency": "INR",
+            "currency_symbol": "₹",
+            "duration_days": 30
+        },
+        {
+            "_id": 2,
+            "name": "2nd Plan - 6 Months",
+            "price": 149,
+            "currency": "INR",
+            "currency_symbol": "₹",
+            "duration_days": 180
+        },
+        {
+            "_id": 3,
+            "name": "3rd Plan - 1 Year",
+            "price": 199,
+            "currency": "INR",
+            "currency_symbol": "₹",
+            "duration_days": 365
+        },
+        {
+            "_id": 4,
+            "name": "4th Plan - Lifetime",
+            "price": 299,
+            "currency": "INR",
+            "currency_symbol": "₹",
+            "duration_days": 3650  # 10 years
+        },
     ]
     
     plans_col.insert_many(plans)
-    print("Successfully added 3 dummy VIP plans to your MongoDB Cluster!")
+    print("Successfully added 4 numbered VIP plans with INR ₹ currency!")
 
 if __name__ == "__main__":
     add_dummy_plans()
