@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from src.database import (
     add_or_update_user, 
     get_active_subscription, 
@@ -70,6 +70,9 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
                 
         add_or_update_user(user_id, username, referrer_id)
         
+        # Remove any persistent reply keyboard first
+        bot.send_message(message.chat.id, "⏳", reply_markup=ReplyKeyboardRemove())
+        
         welcome_text = (
             f"Hello {username}! 👋\n\n"
             "Welcome to the *Premium VIP Hub*.\n"
@@ -119,7 +122,7 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
             markup = InlineKeyboardMarkup(row_width=1)
             if plans:
                 for plan in plans:
-                    btn_text = f"🔥 {plan['name']} - ₹{plan['price']} ({plan['duration_days']} Days)"
+                    btn_text = f"{plan['name']} ({plan['duration_days']} Days)"
                     markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
             
             card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
@@ -147,7 +150,7 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
 
         markup = InlineKeyboardMarkup(row_width=1)
         for plan in plans:
-            btn_text = f"🔥 {plan['name']} - ₹{plan['price']} ({plan['duration_days']} Days)"
+            btn_text = f"{plan['name']} ({plan['duration_days']} Days)"
             markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
             
         send_msg_with_optional_image(bot, chat_id, plan_img, "✨ *Choose Your VIP Pass:*\n\nSelect a plan below to generate your secure payment QR.", parse_mode="Markdown", reply_markup=markup)
