@@ -34,6 +34,9 @@ register_handlers(
     PLAN_IMAGE_URL, SUPPORT_IMAGE_URL
 )
 
+# Explicitly remove commands to clear the Telegram menu button
+bot.delete_my_commands()
+
 app = Flask(__name__)
 
 @app.route('/')
