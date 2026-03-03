@@ -465,7 +465,3 @@ def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", h
                 pass  # Message may not have a caption
             reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."
             bot.send_message(target_user_id, reject_msg, parse_mode="Markdown")
-            except Exception:
-                pass  # Message may not have a caption
-            reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."
-            bot.send_message(target_user_id, reject_msg, parse_mode="Markdown")
