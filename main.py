@@ -57,9 +57,18 @@ def webhook():
 def setup_webhook():
     try:
         APP_URL = os.getenv("KOYEB_PUBLIC_URL")
-        bot.remove_webhook()
+        # Try a few times to deal with transient ConnectionResetError on Koyeb startup
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                bot.remove_webhook()
+                break
+            except Exception as e:
+                print(f"Failed to remove webhook (attempt {attempt+1}/{max_retries}): {e}")
+                time.sleep(2)
+        
         if APP_URL:
-            import time
             time.sleep(1)
             webhook_url = f"{APP_URL.rstrip('/')}/{BOT_TOKEN}"
             bot.set_webhook(url=webhook_url)
@@ -76,11 +85,36 @@ if not init_db():
     import sys
     sys.exit(1)
 
+# Ensure plans are created automatically on startup
+from src.plan import add_dummy_plans
+add_dummy_plans()
+
+def main_run():
+    # If the app is run via gunicorn, __name__ != '__main__', but this module is loaded.
+    # In that case, we only want to setup the environment (which we did) and setup the webhook.
+    APP_URL = os.getenv("KOYEB_PUBLIC_URL")
+    if APP_URL:
+        print("Configuring for webhook mode...")
+        start_scheduler_thread(bot, PRIVATE_CHANNEL_ID)
+        setup_webhook()
+        # If run directly via python main.py, we must start the Flask app
+        if __name__ == '__main__':
+            port = int(os.environ.get("PORT", 8000))
+            print(f"Starting Flask server on port {port}...")
+            app.run(host="0.0.0.0", port=port)
+    else:
+        print("Running in local mode with infinity_polling...")
+        start_scheduler_thread(bot, PRIVATE_CHANNEL_ID)
+        try:
+            bot.remove_webhook()
+        except Exception as e:
+            print(f"Error removing webhook before polling: {e}")
+        bot.infinity_polling()
+
 if __name__ == '__main__':
-    print("Running in local mode with infinity_polling...")
-    start_scheduler_thread(bot, PRIVATE_CHANNEL_ID)
-    bot.remove_webhook()
-    bot.infinity_polling()
+    main_run()
 else:
+    # Running under gunicorn or another WSGI server
+    APP_URL = os.getenv("KOYEB_PUBLIC_URL")
     start_scheduler_thread(bot, PRIVATE_CHANNEL_ID)
     setup_webhook()
