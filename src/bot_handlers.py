@@ -53,6 +53,13 @@ def send_msg_with_optional_image(bot, chat_id, image_url, text, **kwargs):
 
 def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img="", profile_img="", plan_img="", support_img=""):
 
+    # Cache bot.get_me() — called once, reused forever
+    _bot_info_cache = {}
+    def _get_bot_username():
+        if 'username' not in _bot_info_cache:
+            _bot_info_cache['username'] = bot.get_me().username
+        return _bot_info_cache['username']
+
     @bot.message_handler(commands=['start'])
     def command_start(message):
         user_id = message.from_user.id
@@ -101,46 +108,40 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         send_msg_with_optional_image(bot, message.chat.id, help_img, help_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
     def _handle_profile(chat_id, user_id, username):
+        import threading
         sub = get_active_subscription(user_id)
-        
-        # Send loading message and delete it after
-        loading_msg = bot.send_message(chat_id, "⏳ Loading...", disable_notification=True)
         
         if sub:
             plan_name = sub["plan_name"]
             end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
             is_active = True
             msg = f"✅ *Active VIP Member*\n\n🛡️ *Current Plan:* {plan_name}\n⏳ *Valid Until:* `{end_date_str} UTC`"
-            
-            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
-            if card_io:
-                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown")
-            else:
-                send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown")
+            markup = None
         else:
             plan_name = "NONE"
             end_date_str = "N/A"
             is_active = False
             msg = f"👤 *Profile: {username}*\n\n❌ *Status:* Free User\n\nYou currently don't have access to the VIP channel.\nUnlock premium features by picking a plan below! 👇"
-            
             plans = get_all_plans()
             markup = InlineKeyboardMarkup(row_width=1)
             if plans:
                 for plan in plans:
                     btn_text = f"{plan['name']} ({plan['duration_days']} Days)"
                     markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
-            
-            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
-            if card_io:
-                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown", reply_markup=markup)
-            else:
+
+        # Send text response instantly, then generate card in background
+        def _send_card():
+            try:
+                card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
+                if card_io:
+                    bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown", reply_markup=markup)
+                else:
+                    send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
+            except Exception as e:
+                print(f"Error sending VIP card: {e}")
                 send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
-        
-        # Clean up loading message
-        try:
-            bot.delete_message(chat_id, loading_msg.message_id)
-        except Exception:
-            pass
+
+        threading.Thread(target=_send_card, daemon=True).start()
 
     @bot.message_handler(commands=['my_subscription', 'profile'])
     def command_my_subscription(message):
@@ -176,8 +177,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         _handle_subscribe(call.message.chat.id)
 
     def _handle_referral(chat_id, user_id):
-        bot_info = bot.get_me()
-        bot_username = bot_info.username
+        bot_username = _get_bot_username()
         ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
         msg = (
             "🤝 *Refer & Earn VIP Access*\n\n"
