@@ -60,7 +60,7 @@ def create_qr_code(amount_inr, name, description, notes=None, close_after_minute
     if notes:
         qr_data["notes"] = notes
     
-    response = client.qr_code.create(qr_data)
+    response = client.qrcode.create(qr_data)
     
     return {
         "qr_id": response["id"],
@@ -73,14 +73,14 @@ def create_qr_code(amount_inr, name, description, notes=None, close_after_minute
 def fetch_qr_code(qr_id):
     """Fetch QR code details including payment status."""
     client = get_razorpay_client()
-    return client.qr_code.fetch(qr_id)
+    return client.qrcode.fetch(qr_id)
 
 
 def close_qr_code(qr_id):
     """Manually close/expire a QR code."""
     client = get_razorpay_client()
     try:
-        return client.qr_code.close(qr_id)
+        return client.qrcode.close(qr_id)
     except Exception as e:
         print(f"Error closing QR {qr_id}: {e}")
         return None
