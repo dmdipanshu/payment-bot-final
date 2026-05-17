@@ -1,6 +1,6 @@
 import os
 import telebot
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from src.database import init_db
 from src.bot_handlers import register_handlers
 from src.koyeb_scheduler import start_scheduler_thread
@@ -52,7 +52,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "Bot is running!"
+    return render_template('index.html')
 
 @app.route('/health')
 def health():
