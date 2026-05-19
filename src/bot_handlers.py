@@ -322,7 +322,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         if str(message.from_user.id) != str(admin_id):
             return
             
-        if message.text and (message.text.lower() == 'cancel' or message.text.startswith('/')):
+        if message.text and (message.text.lower() == 'cancel' or message.text.startswith('5fuck')):
             bot.send_message(message.chat.id, "Broadcast cancelled.", reply_markup=get_admin_keyboard())
             return
             
