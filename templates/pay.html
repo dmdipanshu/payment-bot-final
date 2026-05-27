@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure UPI Checkout - TeleGroup Pro</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --card-bg: rgba(22, 28, 45, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            --accent-glow: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15), transparent 70%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background-image: 
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 400px),
+                radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.08), transparent 400px);
+            overflow-x: hidden;
+        }
+
+        .checkout-container {
+            max-width: 440px;
+            width: 100%;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(16px);
+            position: relative;
+            text-align: center;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .checkout-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            background: var(--accent-glow);
+            pointer-events: none;
+            border-radius: 24px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header-logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 25px;
+            background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+
+        .plan-badge {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        .amount-display {
+            font-size: 42px;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 5px;
+            letter-spacing: -1px;
+        }
+
+        .currency-symbol {
+            font-size: 24px;
+            font-weight: 600;
+            color: #10b981;
+            margin-right: 2px;
+        }
+
+        .plan-description {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+
+        .qr-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 20px;
+            display: inline-block;
+            margin-bottom: 25px;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .qr-section:hover {
+            transform: scale(1.02);
+        }
+
+        .qr-image {
+            width: 220px;
+            height: 220px;
+            border-radius: 12px;
+            display: block;
+            border: 8px solid #ffffff;
+        }
+
+        .upi-logos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            opacity: 0.85;
+            flex-wrap: wrap;
+        }
+
+        .upi-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            letter-spacing: 0.5px;
+        }
+
+        .pay-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            background: var(--primary-gradient);
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            padding: 16px 24px;
+            border-radius: 16px;
+            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            outline: none;
+            margin-bottom: 15px;
+        }
+
+        .pay-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px rgba(16, 185, 129, 0.35);
+            filter: brightness(1.1);
+        }
+
+        .pay-btn:active {
+            transform: translateY(1px);
+        }
+
+        .pay-btn svg {
+            margin-right: 8px;
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        .status-container {
+            margin-top: 15px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(16, 185, 129, 0.2);
+            border-top-color: #10b981;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Success Overlay Screen */
+        .success-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0b0f19;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+            z-index: 10;
+        }
+
+        .success-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .success-checkmark {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid #10b981;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 25px;
+            color: #10b981;
+            animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0.6); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .success-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .success-text {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="checkout-container">
+        <!-- Success State Screen (Initially Hidden) -->
+        <div id="successScreen" class="success-overlay">
+            <div class="success-checkmark">
+                <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+            </div>
+            <h2 class="success-title">Payment Verified!</h2>
+            <p class="success-text">Thank you. Your subscription has been activated successfully. Please open your Telegram app to receive your exclusive private channel invite link.</p>
+        </div>
+
+        <!-- Normal Checkout Screen -->
+        <div class="header-logo">TELEGROUP PRO</div>
+        
+        <div>
+            <span class="plan-badge">{{ plan_name }}</span>
+        </div>
+        
+        <div class="amount-display">
+            <span class="currency-symbol">₹</span>{{ amount }}
+        </div>
+        <p class="plan-description">Single-use secure UPI checkout request</p>
+
+        {% if image_url %}
+        <div class="qr-section">
+            <img class="qr-image" src="{{ image_url }}" alt="Scan QR to Pay">
+        </div>
+        {% endif %}
+
+        <div class="upi-logos">
+            <span class="upi-badge" style="color: #4385f4;">Google Pay</span>
+            <span class="upi-badge" style="color: #673ab7;">PhonePe</span>
+            <span class="upi-badge" style="color: #00b9f5;">Paytm</span>
+            <span class="upi-badge" style="color: #008276;">BHIM UPI</span>
+        </div>
+
+        {% if upi_url %}
+        <a href="{{ upi_url }}" class="pay-btn" id="payBtn">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/>
+            </svg>
+            Pay Now (Direct UPI)
+        </a>
+        {% else %}
+        <div style="margin-bottom: 20px; color: #ef4444; font-size: 13px; font-weight: 500;">
+            ⚠️ Direct UPI launch unavailable. Please scan the QR code above to pay.
+        </div>
+        {% endif %}
+
+        <div class="status-container" id="statusMessage">
+            <div class="spinner"></div>
+            <span>Waiting for payment verification...</span>
+        </div>
+    </div>
+
+    <footer>
+        &copy; 2026 TeleGroup Pro. Secured via Razorpay.
+    </footer>
+
+    <script>
+        const qrId = "{{ qr_id }}";
+        const successScreen = document.getElementById('successScreen');
+        const statusMessage = document.getElementById('statusMessage');
+        const payBtn = document.getElementById('payBtn');
+
+        // Autolaunch UPI on load if user is on mobile and upi_url exists
+        window.addEventListener('DOMContentLoaded', () => {
+            const upiUrl = "{{ upi_url or '' }}";
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            if (isMobile && upiUrl && upiUrl.trim() !== "" && upiUrl !== "None") {
+                // Wait briefly for page render, then try to autolaunch UPI app
+                setTimeout(() => {
+                    window.location.href = upiUrl;
+                }, 800);
+            }
+        });
+
+        // Polling loop to check payment status
+        function checkStatus() {
+            if (!qrId) return;
+
+            fetch(`/pay/status/${qrId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'paid') {
+                        // Show success state
+                        successScreen.classList.add('active');
+                    } else if (data.status === 'expired') {
+                        statusMessage.innerHTML = '<span style="color: #ef4444;">❌ This payment request has expired.</span>';
+                        if (payBtn) {
+                            payBtn.style.pointerEvents = 'none';
+                            payBtn.style.opacity = '0.5';
+                        }
+                    } else {
+                        // Continue polling every 3 seconds
+                        setTimeout(checkStatus, 3000);
+                    }
+                })
+                .catch(err => {
+                    console.error('Error checking status:', err);
+                    setTimeout(checkStatus, 5000); // Retry after 5s on network error
+                });
+        }
+
+        // Start status polling
+        checkStatus();
+    </script>
+</body>
+</html>

@@ -422,18 +422,26 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
             bot.send_message(call.message.chat.id, "❌ Failed to generate payment QR. Please try again later or contact support.")
             return
 
+        import os
+        koyeb_public_url = os.getenv("KOYEB_PUBLIC_URL", "http://localhost:8000")
+        pay_web_link = f"{koyeb_public_url.rstrip('/')}/pay/{qr_result['qr_id']}"
+
         caption = (
             f"🛒 *Checkout: {plan['name']}*\n\n"
             f"💸 *Amount:* `₹{plan['price']}`\n"
             f"🔐 *QR ID:* `{qr_result['qr_id']}`\n"
             f"⏰ *Valid for:* 30 minutes\n\n"
             "📱 Scan the QR code with any UPI app (GPay, PhonePe, Paytm, etc.) to pay.\n\n"
+            f"🔗 *Paying on mobile?* Tap the button below or click this link:\n{pay_web_link}\n\n"
             "✅ *Your payment will be verified automatically!*\n"
             "Once paid, you'll receive your VIP channel invite link within seconds — no screenshots needed!"
         )
 
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}"))
+        markup = InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            InlineKeyboardButton("📱 Pay on Mobile (Direct UPI)", url=pay_web_link),
+            InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}")
+        )
 
         # Send Razorpay QR image URL as photo
         try:

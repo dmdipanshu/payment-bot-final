@@ -17,7 +17,7 @@ def _get_collection():
     return db.db["pending_payments"]
 
 
-def create_pending_payment(telegram_id, username, plan_id, plan_name, amount, qr_id):
+def create_pending_payment(telegram_id, username, plan_id, plan_name, amount, qr_id, upi_url=None, image_url=None):
     """
     Store a pending payment record when a QR code is generated for a user.
     
@@ -28,6 +28,8 @@ def create_pending_payment(telegram_id, username, plan_id, plan_name, amount, qr
         plan_name: Name of the plan
         amount: Amount in INR
         qr_id: Razorpay QR Code ID
+        upi_url: The decoded UPI string (upi://pay...)
+        image_url: Razorpay QR code image URL
     
     Returns:
         The inserted document
@@ -41,6 +43,8 @@ def create_pending_payment(telegram_id, username, plan_id, plan_name, amount, qr
         "plan_name": plan_name,
         "amount": amount,
         "qr_id": qr_id,
+        "upi_url": upi_url,
+        "image_url": image_url,
         "status": "pending",        # pending | paid | expired | cancelled
         "created_at": datetime.utcnow(),
         "paid_at": None,
@@ -58,6 +62,15 @@ def find_pending_by_qr_id(qr_id):
     """
     col = _get_collection()
     return col.find_one({"qr_id": qr_id, "status": "pending"})
+
+
+def find_payment_by_qr_id(qr_id):
+    """
+    Look up any payment by Razorpay QR code ID, regardless of status.
+    Returns the document or None.
+    """
+    col = _get_collection()
+    return col.find_one({"qr_id": qr_id})
 
 
 def mark_payment_paid(qr_id, razorpay_payment_id=None):

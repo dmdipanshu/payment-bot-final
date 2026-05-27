@@ -58,6 +58,31 @@ def index():
 def health():
     return jsonify({"status": "ok"}), 200
 
+@app.route('/pay/<qr_id>')
+def pay(qr_id):
+    from src.pending_payments import find_payment_by_qr_id
+    payment = find_payment_by_qr_id(qr_id)
+    if not payment:
+        return render_template('error.html', message="Payment request not found or invalid."), 404
+        
+    return render_template(
+        'pay.html',
+        qr_id=payment.get('qr_id'),
+        amount=payment.get('amount'),
+        plan_name=payment.get('plan_name'),
+        upi_url=payment.get('upi_url'),
+        image_url=payment.get('image_url'),
+        status=payment.get('status')
+    )
+
+@app.route('/pay/status/<qr_id>')
+def pay_status(qr_id):
+    from src.pending_payments import find_payment_by_qr_id
+    payment = find_payment_by_qr_id(qr_id)
+    if not payment:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({"status": payment.get("status", "pending")}), 200
+
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
