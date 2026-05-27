@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import html as html_escape
+=======
+import uuid
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 from datetime import datetime
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
@@ -14,7 +18,11 @@ from src.database import (
     get_full_analytics_data
 )
 from io import BytesIO
+<<<<<<< HEAD
 from src.payments import generate_razorpay_qr
+=======
+from src.payments import generate_upi_qr
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 from src.vip_card import generate_vip_card
 
 def get_main_keyboard():
@@ -51,6 +59,7 @@ def send_msg_with_optional_image(bot, chat_id, image_url, text, **kwargs):
     else:
         return bot.send_message(chat_id, text, **kwargs)
 
+<<<<<<< HEAD
 def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img="", profile_img="", plan_img="", support_img=""):
 
     # Cache bot.get_me() — called once, reused forever
@@ -59,6 +68,9 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         if 'username' not in _bot_info_cache:
             _bot_info_cache['username'] = bot.get_me().username
         return _bot_info_cache['username']
+=======
+def register_handlers(bot, upi_id, private_channel_id, admin_id, start_img="", help_img="", profile_img="", plan_img="", support_img=""):
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 
     @bot.message_handler(commands=['start'])
     def command_start(message):
@@ -77,12 +89,17 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
                 
         add_or_update_user(user_id, username, referrer_id)
         
+<<<<<<< HEAD
         # Remove any persistent reply keyboard without visible clutter
         cleanup_msg = bot.send_message(message.chat.id, ".", reply_markup=ReplyKeyboardRemove(), disable_notification=True)
         try:
             bot.delete_message(message.chat.id, cleanup_msg.message_id)
         except Exception:
             pass
+=======
+        # Remove any persistent reply keyboard first
+        bot.send_message(message.chat.id, "⏳", reply_markup=ReplyKeyboardRemove())
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
         
         welcome_text = (
             f"Hello {username}! 👋\n\n"
@@ -108,26 +125,49 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         send_msg_with_optional_image(bot, message.chat.id, help_img, help_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
     def _handle_profile(chat_id, user_id, username):
+<<<<<<< HEAD
         import threading
         sub = get_active_subscription(user_id)
         
         if sub:
+=======
+        sub = get_active_subscription(user_id)
+        
+        if sub:
+            bot.send_message(chat_id, "⏳ Loading...", disable_notification=True)
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
             plan_name = sub["plan_name"]
             end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
             is_active = True
             msg = f"✅ *Active VIP Member*\n\n🛡️ *Current Plan:* {plan_name}\n⏳ *Valid Until:* `{end_date_str} UTC`"
+<<<<<<< HEAD
             markup = None
         else:
+=======
+            
+            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
+            if card_io:
+                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown")
+            else:
+                send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, "⏳ Loading...", disable_notification=True)
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
             plan_name = "NONE"
             end_date_str = "N/A"
             is_active = False
             msg = f"👤 *Profile: {username}*\n\n❌ *Status:* Free User\n\nYou currently don't have access to the VIP channel.\nUnlock premium features by picking a plan below! 👇"
+<<<<<<< HEAD
+=======
+            
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
             plans = get_all_plans()
             markup = InlineKeyboardMarkup(row_width=1)
             if plans:
                 for plan in plans:
                     btn_text = f"{plan['name']} ({plan['duration_days']} Days)"
                     markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
+<<<<<<< HEAD
 
         # Send text response instantly, then generate card in background
         def _send_card():
@@ -143,6 +183,15 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
 
         threading.Thread(target=_send_card, daemon=True).start()
 
+=======
+            
+            card_io = generate_vip_card(bot, user_id, username, plan_name, end_date_str, is_active)
+            if card_io:
+                bot.send_photo(chat_id, photo=card_io, caption=msg, parse_mode="Markdown", reply_markup=markup)
+            else:
+                send_msg_with_optional_image(bot, chat_id, profile_img, msg, parse_mode="Markdown", reply_markup=markup)
+
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
     @bot.message_handler(commands=['my_subscription', 'profile'])
     def command_my_subscription(message):
         username = message.from_user.username or message.from_user.first_name
@@ -177,7 +226,12 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         _handle_subscribe(call.message.chat.id)
 
     def _handle_referral(chat_id, user_id):
+<<<<<<< HEAD
         bot_username = _get_bot_username()
+=======
+        bot_info = bot.get_me()
+        bot_username = bot_info.username
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
         ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
         msg = (
             "🤝 *Refer & Earn VIP Access*\n\n"
@@ -276,6 +330,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
             elif row['status'] == 'Expired':
                 status_class = 'status-expired'
                 
+<<<<<<< HEAD
             safe_username = html_escape.escape(str(row['username']))
             safe_plan = html_escape.escape(str(row['plan_name']))
             html_content += f"""
@@ -285,6 +340,15 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
                         <td>{row['referrer_id']}</td>
                         <td>{row['referral_count']}</td>
                         <td>{safe_plan}</td>
+=======
+            html_content += f"""
+                    <tr>
+                        <td><code>{row['telegram_id']}</code></td>
+                        <td>{row['username']}</td>
+                        <td>{row['referrer_id']}</td>
+                        <td>{row['referral_count']}</td>
+                        <td>{row['plan_name']}</td>
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
                         <td class="{status_class}">{row['status']}</td>
                         <td>{row['end_date']}</td>
                     </tr>
@@ -322,7 +386,11 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         if str(message.from_user.id) != str(admin_id):
             return
             
+<<<<<<< HEAD
         if message.text and (message.text.lower() == 'cancel' or message.text.startswith('/')):
+=======
+        if message.text and message.text.lower() == 'cancel':
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
             bot.send_message(message.chat.id, "Broadcast cancelled.", reply_markup=get_admin_keyboard())
             return
             
@@ -362,8 +430,13 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
 
     def process_support_message(message):
         msg_text = message.text or message.caption or "[Non-text message]"
+<<<<<<< HEAD
         if msg_text.startswith("/"):
             bot.send_message(message.chat.id, "Support request cancelled.")
+=======
+        if msg_text in ["/start", "/help", "/admin"]:
+            bot.send_message(message.chat.id, "Support request cancelled. Re-routing...")
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
             return
 
         user_id = message.from_user.id
@@ -396,13 +469,18 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Failed to reach user: {e}")
 
+<<<<<<< HEAD
     # ---------------- RAZORPAY AUTO-VERIFIED PAYMENTS ---------------- #
+=======
+    # ---------------- PAYMENTS & ADMIN VERIFICATION ---------------- #
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
     @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
     def process_plan_selection(call):
         bot.answer_callback_query(call.id)
         plan_id = int(call.data.split('_')[1])
         plan = get_plan_by_id(plan_id)
         if not plan: return
+<<<<<<< HEAD
 
         user_id = call.from_user.id
         username = call.from_user.username or call.from_user.first_name
@@ -572,3 +650,83 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
     # Expose _fulfill_payment so webhook handler in main.py can call it
     bot._fulfill_payment = _fulfill_payment
 
+=======
+            
+        tx_ref = str(uuid.uuid4())[:8].upper()
+        qr_image = generate_upi_qr(upi_id, plan['price'], tx_ref)
+        caption = f"🛒 *Checkout: {plan['name']}*\n\n💸 *Amount:* `₹{plan['price']}`\n🏦 *UPI ID:* `{upi_id}` (Tap to copy)\n📝 *Ref ID:* `{tx_ref}`\n\nPlease scan the QR code or copy the UPI ID to pay."
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📸 Send Screenshot", callback_data=f"ss_{plan_id}_{tx_ref}"))
+        bot.send_photo(call.message.chat.id, photo=qr_image, caption=caption, reply_markup=markup, parse_mode="Markdown")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('ss_'))
+    def ask_for_screenshot(call):
+        bot.answer_callback_query(call.id)
+        data = call.data.split('_')
+        msg = bot.send_message(call.message.chat.id, "📸 Please *upload a screenshot* of your successful payment.\n\nMake sure the transaction ID is clearly visible.", parse_mode="Markdown")
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        bot.register_next_step_handler(msg, process_screenshot_upload, data[1], data[2])
+
+    def process_screenshot_upload(message, plan_id, tx_ref):
+        if not message.photo and not message.document:
+            bot.send_message(message.chat.id, "❌ I did not receive an image. Please start the /subscribe process again.")
+            return
+            
+        bot.send_message(message.chat.id, "⏳ Your payment screenshot has been sent to the Admin for verification.")
+        plan = get_plan_by_id(int(plan_id))
+        admin_caption = f"🚨 *New Payment Verification*\n\n👤 *User:* {message.from_user.username} (`{message.from_user.id}`)\n📦 *Plan:* {plan['name']}\n💸 *Amount Expected:* ₹{plan['price']}\n📝 *Ref ID:* `{tx_ref}`\n\nPlease verify this screenshot."
+        
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(InlineKeyboardButton("✅ Approve", callback_data=f"approve_{message.from_user.id}_{plan_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"reject_{message.from_user.id}"))
+        
+        if message.photo:
+            bot.send_photo(admin_id, photo=message.photo[-1].file_id, caption=admin_caption, reply_markup=markup, parse_mode="Markdown")
+        elif message.document:
+            bot.send_document(admin_id, document=message.document.file_id, caption=admin_caption, reply_markup=markup, parse_mode="Markdown")
+
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
+    def admin_verification_decision(call):
+        bot.answer_callback_query(call.id)
+        if str(call.from_user.id) != str(admin_id): return
+        data = call.data.split('_')
+        action = data[0]
+        target_user_id = int(data[1])
+        
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+
+        if action == "approve":
+            plan_id = int(data[2])
+            new_sub = create_subscription(target_user_id, plan_id)
+            if not new_sub: return bot.send_message(admin_id, f"❌ Failed to create subscription for user {target_user_id}.")
+                
+            try:
+                invite_link = bot.create_chat_invite_link(chat_id=private_channel_id, member_limit=1).invite_link
+                success_msg = f"🎉 *Payment Verified!*\n\nYour payment was approved. Thank you for subscribing to the *{new_sub['plan_name']}* plan.\nYour access is valid until: `{new_sub['end_date'].strftime('%Y-%m-%d %H:%M UTC')}`\n\n👉 [Click here to join the private channel]({invite_link})\n\n_(This link can only be used once.)_"
+                bot.send_message(target_user_id, success_msg, parse_mode="Markdown", disable_web_page_preview=True)
+                try:
+                    bot.edit_message_caption(caption=f"{call.message.caption or ''}\n\n*STATUS: ✅ APPROVED*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+                except Exception:
+                    pass  # Message may not have a caption
+                
+                # Check for referral reward
+                if new_sub.get("referrer_id"):
+                    rewarded = add_referral_bonus(new_sub["referrer_id"], bonus_days=7)
+                    if rewarded:
+                        try:
+                            ref_msg = "🎉 *Referral Bonus Unlocked!*\n\nSomeone just used your unique referral link to buy a subscription!\nWe have added **+7 Days** of VIP access to your account as a thank you! 📈"
+                            bot.send_message(new_sub["referrer_id"], ref_msg, parse_mode="Markdown")
+                        except Exception as e:
+                            print(f"Could not message referrer: {e}")
+                            
+            except Exception as e:
+                bot.send_message(admin_id, f"❌ Error generating invite link: {e}")
+                
+        elif action == "reject":
+            try:
+                bot.edit_message_caption(caption=f"{call.message.caption or ''}\n\n*STATUS: ❌ REJECTED*", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+            except Exception:
+                pass  # Message may not have a caption
+            reject_msg = "❌ *Payment Verification Failed*\n\nYour payment screenshot was rejected by the Admin. This usually happens if the transaction ID is invalid, missing, or the amount is incorrect.\n\nPlease try again or use the 🎧 Contact Support option if you think this is a mistake."
+            bot.send_message(target_user_id, reject_msg, parse_mode="Markdown")
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4

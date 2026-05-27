@@ -2,7 +2,11 @@ pyTelegramBotAPI==4.14.0
 Flask==3.0.0
 pymongo==4.6.2
 dnspython==2.6.1
+<<<<<<< HEAD
 razorpay==2.0.1
+=======
+qrcode==7.4.2
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 schedule==1.2.1
 gunicorn==21.2.0
 python-dotenv==1.0.0

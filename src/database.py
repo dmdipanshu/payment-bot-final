@@ -28,10 +28,13 @@ def init_db():
         # Create indexes
         users_col.create_index("telegram_id", unique=True)
         subs_col.create_index([("user_telegram_id", 1), ("is_active", 1)])
+<<<<<<< HEAD
         # Index for fast Razorpay webhook QR lookups
         pending_col = db['pending_payments']
         pending_col.create_index("qr_id", unique=True)
         pending_col.create_index([("telegram_id", 1), ("status", 1)])
+=======
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
         print("MongoDB Connected & Indexes Verified")
         return True
     except Exception as e:

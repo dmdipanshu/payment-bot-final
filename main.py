@@ -1,6 +1,10 @@
 import os
 import telebot
+<<<<<<< HEAD
 from flask import Flask, request, jsonify, render_template
+=======
+from flask import Flask, request, jsonify
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 from src.database import init_db
 from src.bot_handlers import register_handlers
 from src.koyeb_scheduler import start_scheduler_thread
@@ -12,9 +16,15 @@ except ImportError:
     pass
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+<<<<<<< HEAD
 PRIVATE_CHANNEL_ID = int(os.getenv("PRIVATE_CHANNEL_ID", "-1001234567890"))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+=======
+UPI_ID = os.getenv("UPI_ID", "yourname@upi")
+PRIVATE_CHANNEL_ID = int(os.getenv("PRIVATE_CHANNEL_ID", "-1001234567890"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 
 # Image URLs
 START_IMAGE_URL = os.getenv("START_IMAGE_URL", "")
@@ -26,6 +36,7 @@ SUPPORT_IMAGE_URL = os.getenv("SUPPORT_IMAGE_URL", "")
 if not BOT_TOKEN or BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
     print("Warning: Missing or invalid BOT_TOKEN")
 
+<<<<<<< HEAD
 # Validate Razorpay credentials
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
@@ -38,6 +49,12 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 register_handlers(
     bot, PRIVATE_CHANNEL_ID, ADMIN_ID,
+=======
+bot = telebot.TeleBot(BOT_TOKEN)
+
+register_handlers(
+    bot, UPI_ID, PRIVATE_CHANNEL_ID, ADMIN_ID,
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
     START_IMAGE_URL, HELP_IMAGE_URL, PROFILE_IMAGE_URL, 
     PLAN_IMAGE_URL, SUPPORT_IMAGE_URL
 )
@@ -52,12 +69,17 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
+<<<<<<< HEAD
     return render_template('index.html')
+=======
+    return "Bot is running!"
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"}), 200
 
+<<<<<<< HEAD
 @app.route('/pay/<qr_id>')
 def pay(qr_id):
     from src.pending_payments import find_payment_by_qr_id
@@ -83,6 +105,8 @@ def pay_status(qr_id):
         return jsonify({"status": "not_found"}), 404
     return jsonify({"status": payment.get("status", "pending")}), 200
 
+=======
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -93,6 +117,7 @@ def webhook():
     else:
         return jsonify({"error": "Invalid Content-Type"}), 403
 
+<<<<<<< HEAD
 # ---------- RAZORPAY WEBHOOK ENDPOINT ---------- #
 @app.route('/razorpay/webhook', methods=['POST'])
 def razorpay_webhook():
@@ -147,6 +172,8 @@ def razorpay_webhook():
         print(f"Razorpay webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
+=======
+>>>>>>> e8865ce1858bd4bcace14c672cea2f01ae7661d4
 def setup_webhook():
     try:
         APP_URL = os.getenv("KOYEB_PUBLIC_URL")
