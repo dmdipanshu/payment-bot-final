@@ -703,68 +703,6 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Failed to reach user: {e}")
 
-    # ---------------- QR IMAGE HELPERS ---------------- #
-    def _download_and_crop_qr(image_url):
-        """
-        Download a Razorpay QR image, auto-crop to just the QR code
-        (removing surrounding whitespace and branding), and return as BytesIO.
-        Returns None on failure.
-        """
-        import requests
-        from PIL import Image, ImageOps
-
-        try:
-            resp = requests.get(image_url, timeout=15)
-            resp.raise_for_status()
-
-            img = Image.open(BytesIO(resp.content)).convert("RGBA")
-
-            # Create a white background and paste the image onto it
-            bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
-            bg.paste(img, mask=img)
-            img = bg.convert("RGB")
-
-            # Convert to grayscale and invert so dark QR pixels become white
-            gray = ImageOps.invert(img.convert("L"))
-
-            # getbbox() finds the bounding box of non-zero (non-black in original) pixels
-            bbox = gray.getbbox()
-            if not bbox:
-                return None
-
-            # Add a small margin around the cropped QR
-            margin = 20
-            x1 = max(0, bbox[0] - margin)
-            y1 = max(0, bbox[1] - margin)
-            x2 = min(img.width, bbox[2] + margin)
-            y2 = min(img.height, bbox[3] + margin)
-
-            cropped = img.crop((x1, y1, x2, y2))
-
-            buf = BytesIO()
-            cropped.save(buf, format="PNG")
-            buf.seek(0)
-            buf.name = "qr_code.png"
-            return buf
-
-        except Exception as e:
-            print(f"Error downloading/cropping QR image: {e}")
-            return None
-
-    def _send_qr_fallback_text(chat_id, caption, qr_result):
-        """Send a text-only fallback with an inline URL button when QR image fails."""
-        fallback_markup = InlineKeyboardMarkup(row_width=1)
-        fallback_markup.add(
-            InlineKeyboardButton("🔗 Open QR Code to Pay", url=qr_result['image_url']),
-            InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}")
-        )
-        bot.send_message(
-            chat_id,
-            caption,
-            parse_mode="Markdown",
-            reply_markup=fallback_markup
-        )
-
     # ---------------- RAZORPAY AUTO-VERIFIED PAYMENTS ---------------- #
     @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
     def process_plan_selection(call):
@@ -779,7 +717,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
 
         bot.send_message(chat_id, "⏳ Generating your secure payment QR code...")
 
-        # Run the entire QR generation + send in a background thread
+        # Run QR generation + send in a background thread
         import threading
         def _generate_and_send():
             try:
@@ -803,23 +741,17 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
                 markup = InlineKeyboardMarkup()
                 markup.add(InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}"))
 
-                # Try sending cropped QR, then raw URL, then text fallback
-                sent = False
-                cropped_qr = _download_and_crop_qr(qr_result['image_url'])
-                if cropped_qr:
-                    try:
-                        bot.send_photo(chat_id, photo=cropped_qr, caption=caption, reply_markup=markup, parse_mode="Markdown")
-                        sent = True
-                    except Exception:
-                        pass
-                if not sent:
-                    try:
-                        bot.send_photo(chat_id, photo=qr_result['image_url'], caption=caption, reply_markup=markup, parse_mode="Markdown")
-                        sent = True
-                    except Exception:
-                        pass
-                if not sent:
-                    _send_qr_fallback_text(chat_id, caption, qr_result)
+                # Send Razorpay QR image URL directly (no download/crop)
+                try:
+                    bot.send_photo(chat_id, photo=qr_result['image_url'], caption=caption, reply_markup=markup, parse_mode="Markdown")
+                except Exception:
+                    # Fallback: send as inline URL button
+                    fallback_markup = InlineKeyboardMarkup(row_width=1)
+                    fallback_markup.add(
+                        InlineKeyboardButton("🔗 Open QR Code to Pay", url=qr_result['image_url']),
+                        InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}")
+                    )
+                    bot.send_message(chat_id, caption, parse_mode="Markdown", reply_markup=fallback_markup)
             except Exception as e:
                 print(f"Error in QR generation thread: {e}")
                 bot.send_message(chat_id, "❌ Something went wrong. Please try again.")
