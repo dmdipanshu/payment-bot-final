@@ -1,5 +1,5 @@
 import html as html_escape
-from datetime import datetime
+from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from src.database import (
@@ -11,11 +11,20 @@ from src.database import (
     add_referral_bonus,
     get_all_users,
     get_admin_stats,
-    get_full_analytics_data
+    get_full_analytics_data,
+    create_plan,
+    update_plan,
+    delete_plan,
+    get_subscription_with_countdown,
+    create_scheduled_broadcast,
+    get_pending_broadcasts,
+    cancel_scheduled_broadcast,
 )
 from io import BytesIO
 from src.payments import generate_razorpay_qr
 from src.vip_card import generate_vip_card
+from src.receipt import generate_receipt_image
+from src.revenue_chart import generate_revenue_chart
 
 def get_main_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
@@ -33,10 +42,17 @@ def get_admin_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton("📊 View Stats", callback_data="cmd_admin_stats"),
-        InlineKeyboardButton("📣 Broadcast Message", callback_data="cmd_admin_broadcast")
+        InlineKeyboardButton("📈 Revenue Chart", callback_data="cmd_admin_revenue")
     )
     markup.add(
-        InlineKeyboardButton("💾 Export Analytics", callback_data="cmd_admin_export"),
+        InlineKeyboardButton("📣 Broadcast Now", callback_data="cmd_admin_broadcast"),
+        InlineKeyboardButton("⏰ Schedule Broadcast", callback_data="cmd_admin_schedule")
+    )
+    markup.add(
+        InlineKeyboardButton("📌 Manage Plans", callback_data="cmd_admin_plans"),
+        InlineKeyboardButton("💾 Export Analytics", callback_data="cmd_admin_export")
+    )
+    markup.add(
         InlineKeyboardButton("🔙 Exit Admin Mode", callback_data="cmd_admin_exit")
     )
     return markup
@@ -107,11 +123,34 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         )
         send_msg_with_optional_image(bot, message.chat.id, help_img, help_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
+    def _build_progress_bar(pct, length=15):
+        """Build a text progress bar: ▓▓▓▓▓▓░░░░░░░░░"""
+        filled = int(length * pct / 100)
+        empty = length - filled
+        return "▓" * filled + "░" * empty
+
     def _handle_profile(chat_id, user_id, username):
         import threading
         sub = get_active_subscription(user_id)
+        countdown = get_subscription_with_countdown(user_id)
         
-        if sub:
+        if sub and countdown:
+            plan_name = sub["plan_name"]
+            end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
+            is_active = True
+            bar = _build_progress_bar(countdown["progress_pct"])
+            remaining = countdown["remaining_days"]
+            total = countdown["total_days"]
+            msg = (
+                f"✅ *Active VIP Member*\n\n"
+                f"🛡️ *Current Plan:* {plan_name}\n"
+                f"⏳ *Valid Until:* `{end_date_str} UTC`\n\n"
+                f"📅 *Subscription Progress:*\n"
+                f"`[{bar}]` {countdown['progress_pct']}%\n"
+                f"📆 *{remaining} days remaining* out of {total} days"
+            )
+            markup = None
+        elif sub:
             plan_name = sub["plan_name"]
             end_date_str = sub["end_date"].strftime("%Y-%m-%d %H:%M:%S")
             is_active = True
@@ -346,6 +385,274 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         bot.send_message(message.chat.id, f"✅ *Broadcast Complete*\n\nSuccessfully sent to: {success} users.\nFailed (Blocked/Deleted): {failed} users.", parse_mode="Markdown", reply_markup=get_admin_keyboard())
 
 
+    # ---------------- REVENUE CHART (#7) ---------------- #
+    @bot.callback_query_handler(func=lambda call: call.data == "cmd_admin_revenue")
+    def callback_revenue_chart(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id, "Generating chart...")
+        bot.send_message(call.message.chat.id, "⏳ Generating revenue chart...")
+        chart_io = generate_revenue_chart(days=30)
+        if chart_io:
+            bot.send_photo(
+                call.message.chat.id, photo=chart_io,
+                caption="📈 *30-Day Revenue Chart*", parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            bot.send_message(call.message.chat.id, "ℹ️ No revenue data found for the last 30 days.", reply_markup=get_admin_keyboard())
+
+    # ---------------- PLAN MANAGER (#16) ---------------- #
+    @bot.callback_query_handler(func=lambda call: call.data == "cmd_admin_plans")
+    def callback_plan_manager(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        _show_plan_manager(call.message.chat.id)
+
+    def _show_plan_manager(chat_id):
+        plans = get_all_plans()
+        markup = InlineKeyboardMarkup(row_width=1)
+        for p in plans:
+            markup.add(InlineKeyboardButton(
+                f"✏️ {p['name']} — ₹{p['price']} ({p['duration_days']}d)",
+                callback_data=f"pedit_{p['id']}"
+            ))
+        markup.add(InlineKeyboardButton("➕ Add New Plan", callback_data="plan_add"))
+        markup.add(InlineKeyboardButton("🔙 Back to Admin", callback_data="cmd_admin_back"))
+        bot.send_message(chat_id, "📌 *Plan Manager*\n\nSelect a plan to edit or delete, or add a new one.", parse_mode="Markdown", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cmd_admin_back")
+    def callback_admin_back(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "👑 *Admin Control Panel*", parse_mode="Markdown", reply_markup=get_admin_keyboard())
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pedit_"))
+    def callback_plan_edit(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        plan = get_plan_by_id(plan_id)
+        if not plan:
+            bot.send_message(call.message.chat.id, "❌ Plan not found.")
+            return
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            InlineKeyboardButton("✏️ Edit Name", callback_data=f"pname_{plan_id}"),
+            InlineKeyboardButton("💰 Edit Price", callback_data=f"pprice_{plan_id}")
+        )
+        markup.add(
+            InlineKeyboardButton("📅 Edit Duration", callback_data=f"pdur_{plan_id}"),
+            InlineKeyboardButton("🗑️ Delete Plan", callback_data=f"pdel_{plan_id}")
+        )
+        markup.add(InlineKeyboardButton("🔙 Back to Plans", callback_data="cmd_admin_plans"))
+        text = (
+            f"📦 *Plan #{plan['id']}*\n\n"
+            f"📝 *Name:* {plan['name']}\n"
+            f"💰 *Price:* ₹{plan['price']}\n"
+            f"📅 *Duration:* {plan['duration_days']} days"
+        )
+        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pname_"))
+    def callback_edit_plan_name(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        msg = bot.send_message(call.message.chat.id, "📝 Type the new plan name (or `cancel`):", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, _process_plan_name_edit, plan_id)
+
+    def _process_plan_name_edit(message, plan_id):
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        update_plan(plan_id, name=message.text.strip())
+        bot.send_message(message.chat.id, f"✅ Plan name updated to: *{message.text.strip()}*", parse_mode="Markdown")
+        _show_plan_manager(message.chat.id)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pprice_"))
+    def callback_edit_plan_price(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        msg = bot.send_message(call.message.chat.id, "💰 Enter the new price in INR (number only, or `cancel`):", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, _process_plan_price_edit, plan_id)
+
+    def _process_plan_price_edit(message, plan_id):
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        try:
+            price = int(message.text.strip())
+            update_plan(plan_id, price=price)
+            bot.send_message(message.chat.id, f"✅ Plan price updated to: *₹{price}*", parse_mode="Markdown")
+            _show_plan_manager(message.chat.id)
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ Invalid number. Try again from Plan Manager.", reply_markup=get_admin_keyboard())
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pdur_"))
+    def callback_edit_plan_duration(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        msg = bot.send_message(call.message.chat.id, "📅 Enter the new duration in days (number only, or `cancel`):", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, _process_plan_dur_edit, plan_id)
+
+    def _process_plan_dur_edit(message, plan_id):
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        try:
+            days = int(message.text.strip())
+            update_plan(plan_id, duration_days=days)
+            bot.send_message(message.chat.id, f"✅ Plan duration updated to: *{days} days*", parse_mode="Markdown")
+            _show_plan_manager(message.chat.id)
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ Invalid number. Try again from Plan Manager.", reply_markup=get_admin_keyboard())
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pdel_"))
+    def callback_delete_plan(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton("✅ Yes, Delete", callback_data=f"pdelconf_{plan_id}"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cmd_admin_plans")
+        )
+        bot.send_message(call.message.chat.id, f"⚠️ *Are you sure you want to delete Plan #{plan_id}?*\n\nThis cannot be undone.", parse_mode="Markdown", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("pdelconf_"))
+    def callback_confirm_delete_plan(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        plan_id = int(call.data.split("_")[1])
+        if delete_plan(plan_id):
+            bot.send_message(call.message.chat.id, f"🗑️ Plan #{plan_id} deleted successfully.")
+        else:
+            bot.send_message(call.message.chat.id, "❌ Failed to delete plan.")
+        _show_plan_manager(call.message.chat.id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "plan_add")
+    def callback_add_plan(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "➕ *Add New Plan*\n\nSend plan details in this format:\n`Name | Price | Duration(days)`\n\nExample: `3 Months - ₹149 | 149 | 90`\n\nOr type `cancel`.", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, _process_add_plan)
+
+    def _process_add_plan(message):
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        try:
+            parts = [p.strip() for p in message.text.split("|")]
+            name, price, days = parts[0], int(parts[1]), int(parts[2])
+            new_plan = create_plan(name, price, days)
+            bot.send_message(message.chat.id, f"✅ *Plan Created!*\n\n📝 {new_plan['name']}\n💰 ₹{new_plan['price']}\n📅 {new_plan['duration_days']} days", parse_mode="Markdown")
+            _show_plan_manager(message.chat.id)
+        except Exception:
+            bot.send_message(message.chat.id, "❌ Invalid format. Use: `Name | Price | Days`", parse_mode="Markdown", reply_markup=get_admin_keyboard())
+
+    # ---------------- SCHEDULED BROADCAST (#28) ---------------- #
+    @bot.callback_query_handler(func=lambda call: call.data == "cmd_admin_schedule")
+    def callback_schedule_broadcast(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        # Show existing scheduled broadcasts + option to create
+        pending = get_pending_broadcasts()
+        markup = InlineKeyboardMarkup(row_width=1)
+        markup.add(InlineKeyboardButton("📝 Create New Scheduled Broadcast", callback_data="sched_new"))
+        for i, b in enumerate(pending[:10]):
+            send_str = b["send_at"].strftime("%b %d %H:%M UTC")
+            preview = (b.get("message_text") or "")[:30]
+            markup.add(InlineKeyboardButton(f"❌ {send_str} — {preview}...", callback_data=f"schedcancel_{i}"))
+        markup.add(InlineKeyboardButton("🔙 Back to Admin", callback_data="cmd_admin_back"))
+        text = f"⏰ *Scheduled Broadcasts*\n\n📋 *Pending:* {len(pending)}\n\nTap a broadcast to cancel it, or create a new one."
+        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
+        # Store pending list for cancel reference
+        bot._pending_broadcasts_cache = pending
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("schedcancel_"))
+    def callback_cancel_scheduled(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        idx = int(call.data.split("_")[1])
+        cache = getattr(bot, "_pending_broadcasts_cache", [])
+        if idx < len(cache):
+            bid = cache[idx]["_id"]
+            if cancel_scheduled_broadcast(bid):
+                bot.send_message(call.message.chat.id, "✅ Scheduled broadcast cancelled.")
+            else:
+                bot.send_message(call.message.chat.id, "❌ Could not cancel (may have already been sent).")
+        bot.send_message(call.message.chat.id, "Return to admin:", reply_markup=get_admin_keyboard())
+
+    @bot.callback_query_handler(func=lambda call: call.data == "sched_new")
+    def callback_new_scheduled(call):
+        if str(call.from_user.id) != str(admin_id): return
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(
+            call.message.chat.id,
+            "📝 *New Scheduled Broadcast*\n\n"
+            "Type the message to broadcast.\n"
+            "(Or type `cancel` to abort)",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(msg, _process_sched_message)
+
+    def _process_sched_message(message):
+        if str(message.from_user.id) != str(admin_id): return
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        broadcast_text = message.text or message.caption or ""
+        media_type = None
+        media_file_id = None
+        if message.photo:
+            media_type = "photo"
+            media_file_id = message.photo[-1].file_id
+            broadcast_text = message.caption or ""
+        elif message.document:
+            media_type = "document"
+            media_file_id = message.document.file_id
+            broadcast_text = message.caption or ""
+
+        bot._sched_draft = {"text": broadcast_text, "media_type": media_type, "media_file_id": media_file_id}
+        msg = bot.send_message(
+            message.chat.id,
+            "⏰ *When should this be sent?*\n\n"
+            "Send the date and time in this format:\n"
+            "`YYYY-MM-DD HH:MM` (UTC)\n\n"
+            "Example: `2026-06-05 14:30`\n\n"
+            "Or type `cancel`.",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(msg, _process_sched_time)
+
+    def _process_sched_time(message):
+        if str(message.from_user.id) != str(admin_id): return
+        if message.text and message.text.lower() == "cancel":
+            bot.send_message(message.chat.id, "Cancelled.", reply_markup=get_admin_keyboard())
+            return
+        try:
+            send_at = datetime.strptime(message.text.strip(), "%Y-%m-%d %H:%M")
+            if send_at <= datetime.utcnow():
+                bot.send_message(message.chat.id, "❌ That time is in the past. Try again.", reply_markup=get_admin_keyboard())
+                return
+            draft = getattr(bot, "_sched_draft", {})
+            create_scheduled_broadcast(
+                admin_id=message.from_user.id,
+                message_text=draft.get("text", ""),
+                send_at=send_at,
+                media_type=draft.get("media_type"),
+                media_file_id=draft.get("media_file_id")
+            )
+            bot.send_message(
+                message.chat.id,
+                f"✅ *Broadcast Scheduled!*\n\n📅 *Send at:* `{send_at.strftime('%Y-%m-%d %H:%M UTC')}`\n📝 *Message:* {draft.get('text', '')[:100]}...",
+                parse_mode="Markdown", reply_markup=get_admin_keyboard()
+            )
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ Invalid format. Use `YYYY-MM-DD HH:MM`", parse_mode="Markdown", reply_markup=get_admin_keyboard())
+
     # ---------------- SUPPORT SYSTEM ---------------- #
     def _handle_support(chat_id):
         msg = send_msg_with_optional_image(bot, chat_id, support_img, "📝 *Support Desk*\n\nPlease type your question below in a single message.", parse_mode="Markdown")
@@ -396,6 +703,68 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Failed to reach user: {e}")
 
+    # ---------------- QR IMAGE HELPERS ---------------- #
+    def _download_and_crop_qr(image_url):
+        """
+        Download a Razorpay QR image, auto-crop to just the QR code
+        (removing surrounding whitespace and branding), and return as BytesIO.
+        Returns None on failure.
+        """
+        import requests
+        from PIL import Image, ImageOps
+
+        try:
+            resp = requests.get(image_url, timeout=15)
+            resp.raise_for_status()
+
+            img = Image.open(BytesIO(resp.content)).convert("RGBA")
+
+            # Create a white background and paste the image onto it
+            bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            bg.paste(img, mask=img)
+            img = bg.convert("RGB")
+
+            # Convert to grayscale and invert so dark QR pixels become white
+            gray = ImageOps.invert(img.convert("L"))
+
+            # getbbox() finds the bounding box of non-zero (non-black in original) pixels
+            bbox = gray.getbbox()
+            if not bbox:
+                return None
+
+            # Add a small margin around the cropped QR
+            margin = 20
+            x1 = max(0, bbox[0] - margin)
+            y1 = max(0, bbox[1] - margin)
+            x2 = min(img.width, bbox[2] + margin)
+            y2 = min(img.height, bbox[3] + margin)
+
+            cropped = img.crop((x1, y1, x2, y2))
+
+            buf = BytesIO()
+            cropped.save(buf, format="PNG")
+            buf.seek(0)
+            buf.name = "qr_code.png"
+            return buf
+
+        except Exception as e:
+            print(f"Error downloading/cropping QR image: {e}")
+            return None
+
+    def _send_qr_fallback_text(chat_id, caption, qr_result):
+        """Send a text-only fallback with an inline URL button when QR image fails."""
+        fallback_markup = InlineKeyboardMarkup(row_width=1)
+        fallback_markup.add(
+            InlineKeyboardButton("🔗 Open QR Code to Pay", url=qr_result['image_url']),
+            InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}")
+        )
+        bot.send_message(
+            chat_id,
+            caption,
+            parse_mode="Markdown",
+            reply_markup=fallback_markup
+        )
+
     # ---------------- RAZORPAY AUTO-VERIFIED PAYMENTS ---------------- #
     @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
     def process_plan_selection(call):
@@ -406,53 +775,56 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
 
         user_id = call.from_user.id
         username = call.from_user.username or call.from_user.first_name
+        chat_id = call.message.chat.id
 
-        bot.send_message(call.message.chat.id, "⏳ Generating your secure payment QR code... Please wait.")
+        bot.send_message(chat_id, "⏳ Generating your secure payment QR code...")
 
-        # Generate unique Razorpay QR for this user + plan
-        qr_result = generate_razorpay_qr(
-            telegram_id=user_id,
-            username=username,
-            plan_id=plan_id,
-            plan_name=plan['name'],
-            amount=plan['price']
-        )
+        # Run the entire QR generation + send in a background thread
+        import threading
+        def _generate_and_send():
+            try:
+                qr_result = generate_razorpay_qr(
+                    telegram_id=user_id, username=username,
+                    plan_id=plan_id, plan_name=plan['name'], amount=plan['price']
+                )
+                if not qr_result:
+                    bot.send_message(chat_id, "❌ Failed to generate payment QR. Please try again later or contact support.")
+                    return
 
-        if not qr_result:
-            bot.send_message(call.message.chat.id, "❌ Failed to generate payment QR. Please try again later or contact support.")
-            return
+                caption = (
+                    f"🛒 *Checkout: {plan['name']}*\n\n"
+                    f"💸 *Amount:* `₹{plan['price']}`\n"
+                    f"🔐 *QR ID:* `{qr_result['qr_id']}`\n"
+                    f"⏰ *Valid for:* 30 minutes\n\n"
+                    "📱 Scan the QR code with any UPI app (GPay, PhonePe, Paytm, etc.) to pay.\n\n"
+                    "✅ *Your payment will be verified automatically!*\n"
+                    "Once paid, you'll receive your VIP channel invite link within seconds — no screenshots needed!"
+                )
+                markup = InlineKeyboardMarkup()
+                markup.add(InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}"))
 
-        caption = (
-            f"🛒 *Checkout: {plan['name']}*\n\n"
-            f"💸 *Amount:* `₹{plan['price']}`\n"
-            f"🔐 *QR ID:* `{qr_result['qr_id']}`\n"
-            f"⏰ *Valid for:* 30 minutes\n\n"
-            "📱 Scan the QR code with any UPI app (GPay, PhonePe, Paytm, etc.) to pay.\n\n"
-            "✅ *Your payment will be verified automatically!*\n"
-            "Once paid, you'll receive your VIP channel invite link within seconds — no screenshots needed!"
-        )
+                # Try sending cropped QR, then raw URL, then text fallback
+                sent = False
+                cropped_qr = _download_and_crop_qr(qr_result['image_url'])
+                if cropped_qr:
+                    try:
+                        bot.send_photo(chat_id, photo=cropped_qr, caption=caption, reply_markup=markup, parse_mode="Markdown")
+                        sent = True
+                    except Exception:
+                        pass
+                if not sent:
+                    try:
+                        bot.send_photo(chat_id, photo=qr_result['image_url'], caption=caption, reply_markup=markup, parse_mode="Markdown")
+                        sent = True
+                    except Exception:
+                        pass
+                if not sent:
+                    _send_qr_fallback_text(chat_id, caption, qr_result)
+            except Exception as e:
+                print(f"Error in QR generation thread: {e}")
+                bot.send_message(chat_id, "❌ Something went wrong. Please try again.")
 
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}"))
-
-        # Send Razorpay QR image URL as photo
-        try:
-            bot.send_photo(
-                call.message.chat.id,
-                photo=qr_result['image_url'],
-                caption=caption,
-                reply_markup=markup,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            # Fallback: send image URL as text if photo send fails
-            bot.send_message(
-                call.message.chat.id,
-                f"{caption}\n\n🔗 [Open QR Code]({qr_result['image_url']})",
-                parse_mode="Markdown",
-                reply_markup=markup,
-                disable_web_page_preview=False
-            )
+        threading.Thread(target=_generate_and_send, daemon=True).start()
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('chkpay_'))
     def check_payment_status(call):
@@ -532,6 +904,22 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
                 f"_(This link can only be used once.)_"
             )
             bot.send_message(telegram_id, success_msg, parse_mode="Markdown", disable_web_page_preview=True)
+
+            # Send payment receipt image
+            try:
+                receipt_io = generate_receipt_image(
+                    username=pending_doc.get("username", "N/A"),
+                    telegram_id=telegram_id,
+                    plan_name=new_sub["plan_name"],
+                    amount=pending_doc.get("amount", 0),
+                    qr_id=qr_id,
+                    payment_id=razorpay_payment_id,
+                    expiry_date=new_sub["end_date"]
+                )
+                if receipt_io:
+                    bot.send_photo(telegram_id, photo=receipt_io, caption="🧾 *Your Payment Receipt*", parse_mode="Markdown")
+            except Exception as e:
+                print(f"Error sending receipt: {e}")
 
             # Notify admin
             admin_msg = (

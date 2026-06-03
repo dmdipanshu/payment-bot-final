@@ -32,6 +32,9 @@ def init_db():
         pending_col = db['pending_payments']
         pending_col.create_index("qr_id", unique=True)
         pending_col.create_index([("telegram_id", 1), ("status", 1)])
+        # Index for scheduled broadcasts
+        broadcasts_col = db['scheduled_broadcasts']
+        broadcasts_col.create_index([("status", 1), ("send_at", 1)])
         print("MongoDB Connected & Indexes Verified")
         return True
     except Exception as e:
@@ -47,6 +50,7 @@ def add_or_update_user(telegram_id, username, referrer_id=None):
     if not existing:
         # If it's a completely new user
         update_data["$set"]["referral_count"] = 0
+        update_data["$set"]["created_at"] = datetime.utcnow()
         if referrer_id:
             update_data["$set"]["referrer_id"] = referrer_id
             
@@ -214,3 +218,150 @@ def get_full_analytics_data():
             "end_date": end_date
         })
     return export_data
+
+
+# ============ PLAN CRUD (Admin In-Bot Management) ============ #
+
+def create_plan(name, price, duration_days):
+    """Create a new plan with auto-incremented ID."""
+    last_plan = plans_col.find_one(sort=[("_id", -1)])
+    new_id = (last_plan["_id"] + 1) if last_plan else 1
+    plan = {
+        "_id": new_id,
+        "name": name,
+        "price": price,
+        "currency": "INR",
+        "currency_symbol": "₹",
+        "duration_days": duration_days
+    }
+    plans_col.insert_one(plan)
+    return plan
+
+def update_plan(plan_id, **kwargs):
+    """Update a plan's fields (name, price, duration_days)."""
+    update_fields = {}
+    for key in ("name", "price", "duration_days"):
+        if key in kwargs and kwargs[key] is not None:
+            update_fields[key] = kwargs[key]
+    if not update_fields:
+        return None
+    plans_col.update_one({"_id": int(plan_id)}, {"$set": update_fields})
+    return plans_col.find_one({"_id": int(plan_id)})
+
+def delete_plan(plan_id):
+    """Delete a plan by ID. Returns True if deleted."""
+    result = plans_col.delete_one({"_id": int(plan_id)})
+    return result.deleted_count > 0
+
+
+# ============ SCHEDULED BROADCASTS ============ #
+
+def create_scheduled_broadcast(admin_id, message_text, send_at, media_type=None, media_file_id=None):
+    """Schedule a broadcast for a future date/time."""
+    col = db['scheduled_broadcasts']
+    doc = {
+        "admin_id": admin_id,
+        "message_text": message_text,
+        "media_type": media_type,       # 'photo', 'document', or None
+        "media_file_id": media_file_id,
+        "send_at": send_at,
+        "status": "pending",            # pending | sent | cancelled
+        "created_at": datetime.utcnow(),
+    }
+    col.insert_one(doc)
+    return doc
+
+def get_due_broadcasts():
+    """Get all pending broadcasts whose send_at time has passed."""
+    col = db['scheduled_broadcasts']
+    return list(col.find({
+        "status": "pending",
+        "send_at": {"$lte": datetime.utcnow()}
+    }))
+
+def mark_broadcast_sent(broadcast_id):
+    """Mark a scheduled broadcast as sent."""
+    from bson.objectid import ObjectId
+    col = db['scheduled_broadcasts']
+    col.update_one({"_id": broadcast_id}, {"$set": {"status": "sent", "sent_at": datetime.utcnow()}})
+
+def get_pending_broadcasts():
+    """Get all future pending broadcasts (for admin listing)."""
+    col = db['scheduled_broadcasts']
+    return list(col.find({"status": "pending"}).sort("send_at", 1))
+
+def cancel_scheduled_broadcast(broadcast_id):
+    """Cancel a pending scheduled broadcast."""
+    from bson.objectid import ObjectId
+    col = db['scheduled_broadcasts']
+    result = col.update_one(
+        {"_id": broadcast_id, "status": "pending"},
+        {"$set": {"status": "cancelled"}}
+    )
+    return result.modified_count > 0
+
+
+# ============ DRIP CAMPAIGN ============ #
+
+def get_users_for_drip(days_since_join):
+    """
+    Get users who joined exactly N days ago and do NOT have an active subscription.
+    Used by the drip campaign scheduler.
+    """
+    target_date = datetime.utcnow() - timedelta(days=days_since_join)
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # Find users who joined on that specific day
+    users = list(users_col.find({
+        "created_at": {"$gte": start_of_day, "$lte": end_of_day}
+    }))
+
+    # Filter out users who already have an active subscription
+    free_users = []
+    for u in users:
+        active = subs_col.find_one({
+            "user_telegram_id": u["telegram_id"],
+            "is_active": True,
+            "end_date": {"$gt": datetime.utcnow()}
+        })
+        if not active:
+            free_users.append(u)
+
+    return free_users
+
+
+# ============ SUBSCRIPTION WITH REMAINING DAYS ============ #
+
+def get_subscription_with_countdown(telegram_id):
+    """
+    Get the active subscription with remaining days and total days for progress bar.
+    Returns dict with plan_name, end_date, start_date, total_days, remaining_days, progress_pct
+    or None.
+    """
+    sub = subs_col.find_one({
+        "user_telegram_id": telegram_id,
+        "is_active": True,
+        "end_date": {"$gt": datetime.utcnow()}
+    })
+    if not sub:
+        return None
+
+    plan = plans_col.find_one({"_id": sub["plan_id"]})
+    if not plan:
+        return None
+
+    now = datetime.utcnow()
+    total_days = (sub["end_date"] - sub["start_date"]).days or 1
+    remaining = (sub["end_date"] - now).days
+    elapsed = total_days - remaining
+    progress_pct = min(100, max(0, int((elapsed / total_days) * 100)))
+
+    return {
+        "plan_name": plan["name"],
+        "start_date": sub["start_date"],
+        "end_date": sub["end_date"],
+        "total_days": total_days,
+        "remaining_days": max(0, remaining),
+        "progress_pct": progress_pct,
+    }
