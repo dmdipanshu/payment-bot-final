@@ -92,8 +92,29 @@ def razorpay_webhook():
 
         print(f"Razorpay webhook received: {event_type}")
 
-        if event_type == 'qr_code.credited':
-            # Extract QR code ID and payment ID
+        if event_type == 'payment_link.paid':
+            # New flow — Payment Link based
+            pl_entity = event_data.get('payload', {}).get('payment_link', {}).get('entity', {})
+            payment_entity = event_data.get('payload', {}).get('payment', {}).get('entity', {})
+
+            link_id = pl_entity.get('id', '')
+            payment_id = payment_entity.get('id', '')
+
+            print(f"Payment Link {link_id} paid, payment_id={payment_id}")
+
+            if is_event_already_processed(link_id):
+                print(f"Link {link_id} already processed, skipping.")
+                return jsonify({"status": "already_processed"}), 200
+
+            pending = find_pending_by_qr_id(link_id)
+            if pending:
+                bot._fulfill_payment(None, pending, link_id, payment_id)
+                print(f"Payment fulfilled for user {pending['telegram_id']}")
+            else:
+                print(f"No pending payment found for link {link_id}")
+
+        elif event_type == 'qr_code.credited':
+            # Legacy flow — QR code based
             qr_entity = event_data.get('payload', {}).get('qr_code', {}).get('entity', {})
             payment_entity = event_data.get('payload', {}).get('payment', {}).get('entity', {})
 

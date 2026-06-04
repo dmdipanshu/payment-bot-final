@@ -55,3 +55,54 @@ def generate_razorpay_qr(telegram_id, username, plan_id, plan_name, amount):
     except Exception as e:
         print(f"Error generating Razorpay QR for user {telegram_id}: {e}")
         return None
+
+
+def generate_razorpay_link(telegram_id, username, plan_id, plan_name, amount):
+    """
+    Generate a Razorpay Payment Link for instant checkout.
+    Returns a clickable short_url — much faster than QR image generation.
+
+    Args:
+        telegram_id: User's Telegram ID
+        username: User's Telegram username
+        plan_id: Plan ID being purchased
+        plan_name: Plan name for display
+        amount: Amount in INR
+
+    Returns:
+        dict with: link_id, short_url, amount
+        or None on failure
+    """
+    try:
+        from src.razorpay_client import create_payment_link
+
+        notes = {
+            "telegram_id": str(telegram_id),
+            "plan_id": str(plan_id),
+            "plan_name": plan_name,
+            "username": username,
+        }
+
+        link_result = create_payment_link(
+            amount_inr=amount,
+            name=f"VIP_{telegram_id}_{plan_id}",
+            description=f"VIP Plan: {plan_name} for User {telegram_id}",
+            notes=notes,
+            expire_after_minutes=30,
+        )
+
+        # Store pending payment mapping using link_id as the reference
+        create_pending_payment(
+            telegram_id=telegram_id,
+            username=username,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            amount=amount,
+            qr_id=link_result["link_id"],  # reuse qr_id field for link_id
+        )
+
+        return link_result
+
+    except Exception as e:
+        print(f"Error generating Razorpay Payment Link for user {telegram_id}: {e}")
+        return None

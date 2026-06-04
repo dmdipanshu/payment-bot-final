@@ -21,7 +21,7 @@ from src.database import (
     cancel_scheduled_broadcast,
 )
 from io import BytesIO
-from src.payments import generate_razorpay_qr
+from src.payments import generate_razorpay_qr, generate_razorpay_link
 from src.vip_card import generate_vip_card
 from src.receipt import generate_receipt_image
 from src.revenue_chart import generate_revenue_chart
@@ -204,7 +204,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
             btn_text = f"{plan['name']} ({plan['duration_days']} Days)"
             markup.add(InlineKeyboardButton(btn_text, callback_data=f"buy_{plan['id']}"))
             
-        send_msg_with_optional_image(bot, chat_id, plan_img, "✨ *Choose Your VIP Pass:*\n\nSelect a plan below to generate your secure payment QR.", parse_mode="Markdown", reply_markup=markup)
+        send_msg_with_optional_image(bot, chat_id, plan_img, "✨ *Choose Your VIP Pass:*\n\nSelect a plan below to get your instant payment link.", parse_mode="Markdown", reply_markup=markup)
 
     @bot.message_handler(commands=['subscribe', 'premium'])
     def command_subscribe(message):
@@ -715,90 +715,106 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
         username = call.from_user.username or call.from_user.first_name
         chat_id = call.message.chat.id
 
-        bot.send_message(chat_id, "⏳ Generating your secure payment QR code...")
+        try:
+            link_result = generate_razorpay_link(
+                telegram_id=user_id, username=username,
+                plan_id=plan_id, plan_name=plan['name'], amount=plan['price']
+            )
 
-        # Run QR generation + send in a background thread
-        import threading
-        def _generate_and_send():
-            try:
-                qr_result = generate_razorpay_qr(
-                    telegram_id=user_id, username=username,
-                    plan_id=plan_id, plan_name=plan['name'], amount=plan['price']
-                )
-                if not qr_result:
-                    bot.send_message(chat_id, "❌ Failed to generate payment QR. Please try again later or contact support.")
-                    return
+            if not link_result:
+                bot.send_message(chat_id, "❌ Failed to generate payment link. Please try again later or contact support.")
+                return
 
-                caption = (
-                    f"🛒 *Checkout: {plan['name']}*\n\n"
-                    f"💸 *Amount:* `₹{plan['price']}`\n"
-                    f"🔐 *QR ID:* `{qr_result['qr_id']}`\n"
-                    f"⏰ *Valid for:* 30 minutes\n\n"
-                    "📱 Scan the QR code with any UPI app (GPay, PhonePe, Paytm, etc.) to pay.\n\n"
-                    "✅ *Your payment will be verified automatically!*\n"
-                    "Once paid, you'll receive your VIP channel invite link within seconds — no screenshots needed!"
-                )
-                markup = InlineKeyboardMarkup()
-                markup.add(InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}"))
+            caption = (
+                f"🛒 *Checkout: {plan['name']}*\n\n"
+                f"💸 *Amount:* `₹{plan['price']}`\n"
+                f"⏰ *Valid for:* 30 minutes\n\n"
+                "📱 Tap the button below to pay instantly via any UPI app (GPay, PhonePe, Paytm, etc.)\n\n"
+                "✅ *Your payment will be verified automatically!*\n"
+                "Once paid, you'll receive your VIP channel invite link within seconds — no screenshots needed!"
+            )
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                InlineKeyboardButton("💳 Pay Now", url=link_result['short_url'])
+            )
+            markup.add(
+                InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{link_result['link_id']}")
+            )
 
-                # Send Razorpay QR image URL directly (no download/crop)
-                try:
-                    bot.send_photo(chat_id, photo=qr_result['image_url'], caption=caption, reply_markup=markup, parse_mode="Markdown")
-                except Exception:
-                    # Fallback: send as inline URL button
-                    fallback_markup = InlineKeyboardMarkup(row_width=1)
-                    fallback_markup.add(
-                        InlineKeyboardButton("🔗 Open QR Code to Pay", url=qr_result['image_url']),
-                        InlineKeyboardButton("🔄 Check Payment Status", callback_data=f"chkpay_{qr_result['qr_id']}")
-                    )
-                    bot.send_message(chat_id, caption, parse_mode="Markdown", reply_markup=fallback_markup)
-            except Exception as e:
-                print(f"Error in QR generation thread: {e}")
-                bot.send_message(chat_id, "❌ Something went wrong. Please try again.")
+            bot.send_message(chat_id, caption, parse_mode="Markdown", reply_markup=markup)
 
-        threading.Thread(target=_generate_and_send, daemon=True).start()
+        except Exception as e:
+            print(f"Error generating payment link: {e}")
+            bot.send_message(chat_id, "❌ Something went wrong. Please try again.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('chkpay_'))
     def check_payment_status(call):
         """Manual payment status check button for users."""
         bot.answer_callback_query(call.id, "Checking payment status...")
-        qr_id = call.data.split('chkpay_')[1]
+        pay_id = call.data.split('chkpay_')[1]
 
         from src.pending_payments import find_pending_by_qr_id, is_event_already_processed
-        from src.razorpay_client import fetch_qr_code
 
         # Check if already processed
-        if is_event_already_processed(qr_id):
+        if is_event_already_processed(pay_id):
             bot.send_message(call.message.chat.id, "✅ This payment has already been verified! Check your DMs for the invite link.")
             return
 
         try:
-            qr_data = fetch_qr_code(qr_id)
-            status = qr_data.get("status", "unknown")
+            from src.razorpay_client import get_razorpay_client
 
-            if status == "closed" and qr_data.get("payments_count_received", 0) > 0:
+            client = get_razorpay_client()
+
+            # Try as Payment Link first (new flow), then fall back to QR code (old flow)
+            status = "unknown"
+            is_paid = False
+
+            if pay_id.startswith("plink_"):
+                # Payment Link
+                link_data = client.payment_link.fetch(pay_id)
+                status = link_data.get("status", "unknown")
+                is_paid = (status == "paid")
+            elif pay_id.startswith("qr_"):
+                # Legacy QR code
+                from src.razorpay_client import fetch_qr_code
+                qr_data = fetch_qr_code(pay_id)
+                status = qr_data.get("status", "unknown")
+                is_paid = (status == "closed" and qr_data.get("payments_count_received", 0) > 0)
+            else:
+                # Try payment link first, then QR
+                try:
+                    link_data = client.payment_link.fetch(pay_id)
+                    status = link_data.get("status", "unknown")
+                    is_paid = (status == "paid")
+                except Exception:
+                    from src.razorpay_client import fetch_qr_code
+                    qr_data = fetch_qr_code(pay_id)
+                    status = qr_data.get("status", "unknown")
+                    is_paid = (status == "closed" and qr_data.get("payments_count_received", 0) > 0)
+
+            if is_paid:
                 # Payment received — trigger the fulfillment
-                pending = find_pending_by_qr_id(qr_id)
+                pending = find_pending_by_qr_id(pay_id)
                 if pending:
-                    _fulfill_payment(call.message.chat.id, pending, qr_id)
+                    _fulfill_payment(call.message.chat.id, pending, pay_id)
                 else:
                     bot.send_message(call.message.chat.id, "✅ Payment received! Processing your subscription...")
-            elif status == "active":
+            elif status in ("created", "active"):
                 bot.send_message(
                     call.message.chat.id,
-                    "⏳ *Payment not yet received.*\n\nPlease scan the QR code and complete the UPI payment. Once done, click the button again to check.",
+                    "⏳ *Payment not yet received.*\n\nPlease tap the Pay Now button and complete the UPI payment. Once done, click this button again to check.",
                     parse_mode="Markdown"
                 )
-            elif status == "expired" or status == "closed":
+            elif status in ("expired", "cancelled"):
                 bot.send_message(
                     call.message.chat.id,
-                    "❌ This QR code has expired. Please use `💎 Get Premium` to generate a new one.",
+                    "❌ This payment link has expired. Please use `💎 Get Premium` to get a new one.",
                     parse_mode="Markdown"
                 )
             else:
-                bot.send_message(call.message.chat.id, f"ℹ️ QR Status: {status}. Please try again in a moment.")
+                bot.send_message(call.message.chat.id, f"ℹ️ Status: {status}. Please try again in a moment.")
         except Exception as e:
-            print(f"Error checking QR status {qr_id}: {e}")
+            print(f"Error checking payment status {pay_id}: {e}")
             bot.send_message(call.message.chat.id, "❌ Could not check status. Please try again.")
 
     def _fulfill_payment(chat_id, pending_doc, qr_id, razorpay_payment_id=None):

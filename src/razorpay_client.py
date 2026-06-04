@@ -70,6 +70,50 @@ def create_qr_code(amount_inr, name, description, notes=None, close_after_minute
     }
 
 
+def create_payment_link(amount_inr, name, description, notes=None, expire_after_minutes=30):
+    """
+    Create a Razorpay Payment Link — returns an instant short_url.
+    Much faster than QR code generation since users get a clickable link.
+
+    Args:
+        amount_inr: Amount in INR
+        name: Customer name / label
+        description: Description of the payment
+        notes: Dict of metadata (telegram_id, plan_id, etc.)
+        expire_after_minutes: Link expires after this many minutes
+
+    Returns:
+        dict with keys: link_id, short_url, amount
+    """
+    client = get_razorpay_client()
+
+    amount_paise = int(amount_inr * 100)
+    expire_by = int(time.time()) + (expire_after_minutes * 60)
+
+    link_data = {
+        "amount": amount_paise,
+        "currency": "INR",
+        "accept_partial": False,
+        "description": description,
+        "expire_by": expire_by,
+        "notify": {"sms": False, "email": False},
+        "upi_link": True,
+        "callback_url": "",
+        "callback_method": "",
+    }
+
+    if notes:
+        link_data["notes"] = notes
+
+    response = client.payment_link.create(link_data)
+
+    return {
+        "link_id": response["id"],
+        "short_url": response.get("short_url", ""),
+        "amount": amount_inr,
+    }
+
+
 def fetch_qr_code(qr_id):
     """Fetch QR code details including payment status."""
     client = get_razorpay_client()
