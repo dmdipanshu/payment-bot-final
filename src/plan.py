@@ -13,8 +13,8 @@ def add_dummy_plans():
     plans = [
         {
             "_id": 1,
-            "name": "1 Month - ₹1",
-            "price": 1,
+            "name": "1 Month - ₹99",
+            "price": 99,
             "currency": "INR",
             "currency_symbol": "₹",
             "duration_days": 30
