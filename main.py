@@ -43,10 +43,17 @@ register_handlers(
 )
 
 # Explicitly remove commands to clear the Telegram menu button across all scopes
-bot.delete_my_commands()
-bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllPrivateChats())
-bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllGroupChats())
-bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllChatAdministrators())
+import time as _startup_time
+for _attempt in range(3):
+    try:
+        bot.delete_my_commands()
+        bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllPrivateChats())
+        bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllGroupChats())
+        bot.delete_my_commands(scope=telebot.types.BotCommandScopeAllChatAdministrators())
+        break
+    except Exception as _e:
+        print(f"delete_my_commands failed (attempt {_attempt+1}/3): {_e}")
+        _startup_time.sleep(2)
 
 app = Flask(__name__)
 
@@ -128,14 +135,12 @@ def razorpay_webhook():
                 print(f"QR {qr_id} already processed, skipping.")
                 return jsonify({"status": "already_processed"}), 200
 
-            # Find pending payment
+            # Find pending payment (may not exist if this QR was auto-created by a payment link)
             pending = find_pending_by_qr_id(qr_id)
             if pending:
-                # Fulfill the payment (create subscription, send invite link)
                 bot._fulfill_payment(None, pending, qr_id, payment_id)
                 print(f"Payment fulfilled for user {pending['telegram_id']}")
-            else:
-                print(f"No pending payment found for QR {qr_id}")
+            # else: silently skip — payment links also trigger qr_code.credited with a different ID
 
         return jsonify({"status": "ok"}), 200
 
