@@ -104,7 +104,7 @@ def register_handlers(bot, private_channel_id, admin_id, start_img="", help_img=
             f"Hello {username}! 👋\n\n"
             "Welcome to the *Premium VIP Hub*.\n"
             "Get instant access to our exclusive content and community.\n\n"
-            "[👇Demo👇](https://t.me/Motivational_videos_4K/4)"
+            "[👇Demo👇](https://t.me/HASEENA_Dillruba/11)"
         )
         send_msg_with_optional_image(
             bot, message.chat.id, start_img, welcome_text, 
